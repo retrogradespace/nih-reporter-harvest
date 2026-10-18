@@ -40,6 +40,7 @@ Four for four is enough to call this a general rule for this API, not a per-fiel
 | ----- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1     | `src/1_harvest_raw.py`    | Nationwide pull, every fiscal year. One JSONL file per year (`data/raw/fy<year>.jsonl`) so an interruption only costs the in-progress year  a `.done` marker means a rerun skips it.                                          |
 | 1b    | `src/1b_backfill_gaps.py` | Second pass for years where stage 1 logged a shortfall. Splits by `activity_code` instead of agency, and only appends records that aren't already in `fy<year>.jsonl`. Writes its own `fy<year>.gapfill_manifest.json` and `logs/gapfill_*.log`; stage 1's manifest and `.done` marker are left alone. |
+| 1c    | `src/1c_close_residual_gaps.py` | Checks every year bucket by bucket: counts the records on file per activity code (codes seen in any year, not just this one), then per agency x subproject flag, compares each count with NIH's total for that bucket, and fetches only the short ones. Oversized buckets split by agency, not state, so records with no U.S. state are reachable. Every fetched bucket must return NIH's full count. Appends only; writes `fy<year>.gapfill_1c_manifest.json` (NIH's total for every query, plus the file's sha256) and `logs/gapfill_1c_*.log`. |
 | 2     | `src/2_load_to_sqlite.py` | Loads every`fy*.jsonl` into `data/nih_harvester.db` (table `nih_raw_projects`). Idempotent: hashes existing rows first, only inserts new / updates changed / skips unchanged  safe to rerun after 1_ adds more years later. |
 
 ```bash
@@ -47,6 +48,7 @@ Four for four is enough to call this a general rule for this API, not a per-fiel
 cd src
 ../.venv/bin/python3 1_harvest_raw.py   # all years  takes hours; add start/end to test on a range
 ../.venv/bin/python3 1b_backfill_gaps.py # fills shortfalls stage 1 logged; skips years already complete
+../.venv/bin/python3 1c_close_residual_gaps.py # closes what 1b couldn't reach; checks every year
 ../.venv/bin/python3 2_load_to_sqlite.py
 ```
 
@@ -95,6 +97,8 @@ Python 3.9+, `requests` (see `requirements.txt`). SQLite support is via Python's
 
 ## Future Releases
 
-Stage 1b has now run across every fiscal year. Most years land within 1-3 records of NIH's own total. The rest are records that neither the agency split nor the activity-code split can reach, mainly R01s with no U.S. `org_state` on file and activity codes that never appear anywhere else in that year's data. A targeted stage 1c pass for those is next. Running 1b writes the per-year counts to `logs/gapfill_*.log`.
+Stage 1c ran across every fiscal year on 2026-10-18 and added 741 records. Every fiscal year now holds every record NIH reports for it (2,983,343 records on file). Most of what 1b missed had activity codes that never appear anywhere else in that year's file (43 U61 records in FY2010, for example), plus a few VA records with no activity code at all. The R01s with no U.S. state that 1b's log flagged had already been fetched by stage 1's agency split.
+
+30 records on file are no longer reported by NIH (FY2024: 1, FY2025: 14, FY2026: 15). They are kept, not deleted. Next: versioning (keep every version of a record and log what changed) and a weekly refresh, which will also mark records NIH has dropped.
 
 # Happy Hacking Folk

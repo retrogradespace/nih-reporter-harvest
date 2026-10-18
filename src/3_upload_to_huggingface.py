@@ -10,7 +10,7 @@ changed, not the whole dataset again.
 
 Uploads two things:
     data/nih_harvester.db          -> repo root, as nih_harvester.db
-    data/raw/fy*.jsonl (+ manifests) -> repo's raw/ folder
+    data/raw/fy*.jsonl (+ stage 1, 1b and 1c manifests) -> repo's raw/ folder
 (.done marker files are local bookkeeping only, not uploaded.)
 
 Before the db goes up it's checkpointed and switched from WAL to DELETE
@@ -66,8 +66,8 @@ size_categories:
 # NIH RePORTER Harvest
 
 A complete, nationwide pull of NIH RePORTER project records, fiscal years
-1985-present, with no institution scoping applied. Roughly 2.96 million
-records across 42 fiscal years, harvested to nationwide completeness (see
+1985-present, with no institution scoping applied. 2,983,343 records
+across 42 fiscal years, harvested to nationwide completeness (see
 Coverage below) rather than filtered to any subset of institutions,
 agencies, or award types.
 
@@ -97,7 +97,10 @@ analytical views described below.
   pulls this database was built from, one JSON record per line exactly as
   returned by the API, before any loading or transformation. Each year has
   a matching `fy<year>.manifest.json` recording when it was harvested and
-  how many records it produced.
+  how many records it produced, plus `fy<year>.gapfill_manifest.json`
+  (stage 1b) and `fy<year>.gapfill_1c_manifest.json` (stage 1c) for the
+  records the gap-fill passes appended. The 1c manifest lists NIH's own
+  total for every query it made and the jsonl file's sha256.
 
 ## Schema (`nih_raw_projects`)
 
@@ -123,11 +126,15 @@ is_current         INTEGER NOT NULL DEFAULT 1
   total from the API, and any shortfall is logged rather than silently
   dropped see each year's `manifest.json` / the GitHub repo's
   `logs/harvest_*.log` convention for those warnings.
-- A small number of records (measured around 0.1-0.6% in the years
-  checked) may still be missing records with no agency code on file, or
-  belonging to an agency/state combination not covered by discovery.
-  Nothing is silently interpolated or estimated; a missing record is
-  simply absent.
+- Two gap-fill passes followed the first harvest. Stage 1b re-split short
+  years by activity code. Stage 1c (2026-10-18) compared every year's
+  records on file with NIH's totals per activity code and per agency x
+  subproject flag, and fetched every bucket that was short. After 1c,
+  **every fiscal year holds every record NIH reports for it.** Each
+  bucket 1c fetched had to return NIH's full count.
+- 30 records on file are no longer reported by NIH (FY2024: 1,
+  FY2025: 14, FY2026: 15). They are kept. `is_current` is still 1 for
+  them until removal handling is added.
 - FY2026 (and possibly the tail of the most recent closed fiscal year) is
   a snapshot as of harvest time, not a closed-out year the federal fiscal
   year runs Oct 1-Sep 30, so the current year's totals will keep growing
@@ -239,7 +246,10 @@ def main():
         print(f"WARNING: {db_path} not found -- skipping (run 2_load_to_sqlite.py first)")
 
     raw_dir = DATA_DIR / "raw"
-    raw_files = sorted(raw_dir.glob("fy*.jsonl")) + sorted(raw_dir.glob("fy*.manifest.json"))
+    # fy*manifest.json covers stage 1's fy<year>.manifest.json and the
+    # gap-fill manifests from 1b and 1c (fy<year>.gapfill_manifest.json,
+    # fy<year>.gapfill_1c_manifest.json).
+    raw_files = sorted(raw_dir.glob("fy*.jsonl")) + sorted(raw_dir.glob("fy*manifest.json"))
     if raw_files:
         total_gb = sum(p.stat().st_size for p in raw_files) / 1e9
         print(f"Uploading {len(raw_files)} raw file(s) ({total_gb:.2f} GB total) to raw/...")
@@ -248,7 +258,7 @@ def main():
             path_in_repo="raw",
             repo_id=REPO_ID,
             repo_type=REPO_TYPE,
-            allow_patterns=["fy*.jsonl", "fy*.manifest.json"],
+            allow_patterns=["fy*.jsonl", "fy*manifest.json"],
         )
         print("  done")
     else:
