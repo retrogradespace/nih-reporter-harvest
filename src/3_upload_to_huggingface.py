@@ -1,5 +1,5 @@
 """
-NIH_Harvester, stage 3 uploads the current local dataset to Hugging Face
+nih-reporter-harvest, stage 3 uploads the current local dataset to Hugging Face
 Hub as a private dataset repo (retrogradespace/nih-reporter-harvest) that is later made public.
 
 Rerunnable and incremental by design: this project is being uploaded in
@@ -64,7 +64,7 @@ Coverage below) rather than filtered to any subset of institutions,
 agencies, or award types.
 
 See the harvesting code and full writeup at
-https://github.com/retrogradespace/NIH_Harvester schema-on-read design,
+https://github.com/retrogradespace/nih-reporter-harvest schema-on-read design,
 the adaptive pagination strategy that gets full coverage despite NIH's
 10,000-record pagination cap at nationwide volumes, and the two derived
 analytical views described below.
@@ -140,7 +140,7 @@ that see NIH RePORTER's own terms for the authoritative statement.
 
 The full harvesting, loading, and view-creation pipeline (plus the
 upload script that produced this dataset) is at
-https://github.com/retrogradespace/NIH_Harvester, along with the design
+https://github.com/retrogradespace/nih-reporter-harvest, along with the design
 rationale for schema-on-read and the pagination strategy. 
 """
 

@@ -39,12 +39,14 @@ Four for four is enough to call this a general rule for this API, not a per-fiel
 | Stage | Script                      | What it does                                                                                                                                                                                                                      |
 | ----- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1     | `src/1_harvest_raw.py`    | Nationwide pull, every fiscal year. One JSONL file per year (`data/raw/fy<year>.jsonl`) so an interruption only costs the in-progress year  a `.done` marker means a rerun skips it.                                          |
+| 1b    | `src/1b_backfill_gaps.py` | Second pass for years where stage 1 logged a shortfall. Splits by `activity_code` instead of agency, and only appends records that aren't already in `fy<year>.jsonl`. Writes its own `fy<year>.gapfill_manifest.json` and `logs/gapfill_*.log`; stage 1's manifest and `.done` marker are left alone. |
 | 2     | `src/2_load_to_sqlite.py` | Loads every`fy*.jsonl` into `data/nih_harvester.db` (table `nih_raw_projects`). Idempotent: hashes existing rows first, only inserts new / updates changed / skips unchanged  safe to rerun after 1_ adds more years later. |
 
 ```bash
 ./setup.sh                              # builds .venv, installs requests
 cd src
 ../.venv/bin/python3 1_harvest_raw.py   # all years  takes hours; add start/end to test on a range
+../.venv/bin/python3 1b_backfill_gaps.py # fills shortfalls stage 1 logged; skips years already complete
 ../.venv/bin/python3 2_load_to_sqlite.py
 ```
 
@@ -91,6 +93,6 @@ Python 3.9+, `requests` (see `requirements.txt`). SQLite support is via Python's
 
 ## Future Releases
 
-The harvest log identified records not captured in the initial pull so the gapfill process was tested on 1985 and 1986. Keep an eye out for additional records.
+Stage 1b has now run across every fiscal year. Most years land within 1-3 records of NIH's own total. The rest are records that neither the agency split nor the activity-code split can reach, mainly R01s with no U.S. `org_state` on file and activity codes that never appear anywhere else in that year's data. A targeted stage 1c pass for those is next. Running 1b writes the per-year counts to `logs/gapfill_*.log`.
 
 # Happy Hacking Folk

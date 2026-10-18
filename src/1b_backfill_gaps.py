@@ -1,5 +1,5 @@
 """
-STILL UNDER DEV -- NIH_Harvester, stage 1b second-pass gap backfill for fiscal years where
+nih-reporter-harvest, stage 1b second-pass gap backfill for fiscal years where
 1_harvest_raw.py's own coverage check logged a shortfall (see
 logs/harvest_*.log: "WARNING: FY<year> covered X/Y of N record(s) still
 missing").

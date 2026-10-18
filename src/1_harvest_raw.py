@@ -1,5 +1,5 @@
 """
-NIH_Harvester, stage 1 nationwide raw pull, every fiscal year NIH
+nih-reporter-harvest, stage 1 nationwide raw pull, every fiscal year NIH
 RePORTER has (FY1985-present), no institution scoping. Uses the adaptive
 pagination in _nih_api.py (dual-pass, escalating to agency/org_state
 splitting only where a bucket actually exceeds what a single query can

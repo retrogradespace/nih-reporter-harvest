@@ -1,5 +1,5 @@
 """
-Shared SQLite landing-table helpers for NIH_Harvester with a schema-on-read
+Shared SQLite landing-table helpers for nih-reporter-harvest with a schema-on-read
 design (raw_json verbatim, hash-based change detection) adapted from an
 earlier Oracle-based pipeline. Raw JSON is stored whole rather than
 flattened at load time so nothing is dropped or restricted before it's

@@ -1,5 +1,5 @@
 """
-NIH_Harvester, stage 2 loads every data/raw/fy*.jsonl file produced by
+nih-reporter-harvest, stage 2 loads every data/raw/fy*.jsonl file produced by
 1_harvest_raw.py into data/nih_harvester.db, a single SQLite landing table
 (nih_raw_projects) covering all fiscal years, all institutions.
 
