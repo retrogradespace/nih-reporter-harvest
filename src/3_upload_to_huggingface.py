@@ -104,17 +104,26 @@ analytical views described below.
 
 ## Schema (`nih_raw_projects`)
 
+One row per version of each record. Use `nih_raw_projects_current`
+(`is_current = 1`) for one row per record NIH currently reports; the
+views read it.
+
 ```
-appl_id            INTEGER PRIMARY KEY   -- NIH's unique id per fiscal-year application record
+version_id         INTEGER PRIMARY KEY   -- one per version
+appl_id            INTEGER NOT NULL      -- NIH's unique id per fiscal-year application record
 project_num        TEXT
 core_project_num   TEXT
 fiscal_year        INTEGER
 raw_json           TEXT NOT NULL         -- the full API record, verbatim
 row_hash           TEXT NOT NULL         -- sha256 of raw_json's canonical form
-valid_from         TEXT
-valid_to           TEXT                  -- unused for now; reserved for future history tracking
-is_current         INTEGER NOT NULL DEFAULT 1
+valid_from         TEXT NOT NULL         -- when this version was first loaded
+valid_to           TEXT                  -- when it was superseded or dropped by NIH (NULL = current)
+is_current         INTEGER NOT NULL      -- 1 = latest known version
 ```
+
+`nih_change_log` records every new, changed (per top-level field) and
+removed record found by each weekly refresh; `nih_refresh_runs` has one
+row per refresh. History starts at the first weekly refresh (October 2026).
 
 ## Coverage and known limitations
 
@@ -133,8 +142,8 @@ is_current         INTEGER NOT NULL DEFAULT 1
   **every fiscal year holds every record NIH reports for it.** Each
   bucket 1c fetched had to return NIH's full count.
 - 30 records on file are no longer reported by NIH (FY2024: 1,
-  FY2025: 14, FY2026: 15). They are kept. `is_current` is still 1 for
-  them until removal handling is added.
+  FY2025: 14, FY2026: 15). The weekly refresh closes such records out
+  (`is_current = 0`, logged as `REMOVED`) rather than deleting them.
 - FY2026 (and possibly the tail of the most recent closed fiscal year) is
   a snapshot as of harvest time, not a closed-out year the federal fiscal
   year runs Oct 1-Sep 30, so the current year's totals will keep growing

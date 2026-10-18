@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template. ../src/schedule_weekly.py fills in __LABEL__, __REPO__ and __HOME__
+     and writes the result to ~/Library/LaunchAgents/. Don't install it directly. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>__LABEL__</string>
+
+    <!-- The project venv's Python, running the weekly chain (4_ then 5_). -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>__REPO__/.venv/bin/python3</string>
+        <string>__REPO__/src/6_run_weekly_refresh.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__REPO__/src</string>
+
+    <!-- Mondays (Weekday 1) at 21:00 local time. NIH updates RePORTER on
+         Saturdays. No wake is scheduled (macOS allows one repeating wake per
+         machine); if the Mac is asleep at 21:00, launchd runs the job when it
+         next wakes. If it's shut down, that week is skipped. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>21</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+    </dict>
+
+    <!-- Anything printed. The run's own log is logs/weekly_refresh_<date>.log. -->
+    <key>StandardOutPath</key>
+    <string>__HOME__/Library/Logs/nih-reporter-harvest/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/Library/Logs/nih-reporter-harvest/launchd.err.log</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

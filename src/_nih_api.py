@@ -129,10 +129,12 @@ def get_total(criteria, max_retries=5):
             raise RuntimeError(f"Total probe failed: {response.status_code} {response.text}")
 
 
-def fetch_paginated(criteria, sort_order="asc", label=""):
+def fetch_paginated(criteria, sort_order="asc", label="", sort_field="appl_id"):
     """Yield every record matching `criteria` in one sort direction,
     paginated and retried, stopping at PAGINATION_CAP caller composes
-    this into full coverage via dual-pass or splitting (see harvest_year)."""
+    this into full coverage via dual-pass or splitting (see harvest_year).
+    sort_field is appl_id except for _complete_pull's last-resort
+    award_amount windows; project_num and unknown fields return HTTP 500."""
     offset = 0
     retries = 1
     max_retries = 5
@@ -145,7 +147,7 @@ def fetch_paginated(criteria, sort_order="asc", label=""):
             # Explicit sort required for stable pagination the NIH RePORTER
             # defaults to relevance ranking when unset, which can reorder
             # between page requests and silently skip/duplicate records.
-            "sort_field": "appl_id",
+            "sort_field": sort_field,
             "sort_order": sort_order,
         }
 
