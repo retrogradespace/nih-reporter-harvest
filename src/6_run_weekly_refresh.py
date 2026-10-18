@@ -39,6 +39,18 @@ def keep_awake():
         print(f"(couldn't start caffeinate, the Mac may sleep during the run: {e})")
 
 
+def remaining_wakes():
+    """macOS: how many one-off 'Monday 20:55' wakes are still scheduled
+    (README: "Waking the Mac for the run"). None elsewhere or on error."""
+    if sys.platform != "darwin":
+        return None
+    try:
+        out = subprocess.run(["/usr/bin/pmset", "-g", "sched"], capture_output=True, text=True).stdout
+    except OSError:
+        return None
+    return sum(1 for line in out.splitlines() if "wake at" in line and "20:55:00" in line)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--max-removals", type=int, help="passed through to 5_ (default there: 100)")
@@ -78,6 +90,11 @@ def main():
                 say(f"!! {script} failed (exit {proc.returncode}) -- stopping.")
                 ok = False
                 break
+
+        wakes = remaining_wakes()
+        if wakes is not None and wakes < 4:
+            say(f"!! WARNING: only {wakes} scheduled Monday 20:55 wake(s) left -- "
+                f"schedule more (README: \"Waking the Mac for the run\"). Run status unchanged.")
 
         status = "SUCCESS" if ok else "FAILED"
         say(f"\n=== weekly refresh {run_id} {status} "

@@ -66,6 +66,17 @@ sqlite3 data/nih_harvester.db < ddl/nih_parsed_view.sql
 sqlite3 data/nih_harvester.db < ddl/nih_indicators_view.sql
 ```
 
+### Waking the Mac for the run
+
+macOS keeps only one *repeating* wake per machine (`pmset repeat`), and on the machine this was built on it is already used by another weekly job. So the Monday 21:00 run is covered by one-off wakes instead, a year at a time. Run this once in Terminal (it asks for your password once):
+
+```bash
+for i in $(seq 0 51); do sudo pmset schedule wake "$(date -v+mon -v+${i}w '+%m/%d/%y') 20:55:00"; done
+pmset -g sched    # lists them
+```
+
+The job holds a `caffeinate` assertion while it runs, so the Mac stays awake for the whole three hours. Each run's log warns when fewer than 4 of these wakes are left. A Mac that is shut down, or restarted and not logged in, skips the run: the job is a LaunchAgent and runs only in a logged-in session.
+
 ## Schema
 
 `nih_raw_projects` -- the landing table, one row per **version** of each record:
