@@ -13,6 +13,13 @@ Uploads two things:
     data/raw/fy*.jsonl (+ manifests) -> repo's raw/ folder
 (.done marker files are local bookkeeping only, not uploaded.)
 
+Before the db goes up it's checkpointed and switched from WAL to DELETE
+journal mode, so the published file is self-contained: no -wal/-shm
+sidecars, and it opens read-only in any SQLite build (Apple's
+/usr/bin/sqlite3 can't open a WAL db read-only once its -wal file is
+gone). _sqlite_landing.connect() switches it back to WAL on the next
+local write, so the harvest/load stages are unaffected.
+
 Repo starts PRIVATE flip to public on huggingface.co once you've
 reviewed the uploaded content, rather than this script deciding that.
 
@@ -24,6 +31,7 @@ Usage:
     ../.venv/bin/python3 3_upload_to_huggingface.py
 """
 
+import sqlite3
 from pathlib import Path
 
 from huggingface_hub import HfApi
@@ -81,6 +89,10 @@ analytical views described below.
   - `nih_indicators` layers a worked analytical example on `nih_parsed`:
     multi-year-funding (MYF) classification, budget/project duration in
     days, and a fiscal-year field keyed off `award_notice_date`.
+
+  The file is a single self-contained database in rollback-journal
+  (DELETE) mode, not WAL, so it opens with any SQLite reader, including
+  read-only. The pipeline switches a local copy to WAL on its next write.
 - `raw/fy<year>.jsonl` (~20 GB total) the original per-fiscal-year raw
   pulls this database was built from, one JSON record per line exactly as
   returned by the API, before any loading or transformation. Each year has
@@ -156,10 +168,45 @@ def load_env(path):
     return env
 
 
+def prepare_db_for_upload(db_path):
+    """Fold the WAL into the main file and leave it in DELETE journal mode.
+
+    Aborts (rather than uploading a partial or WAL-dependent file) if
+    another process still has the db open, or if quick_check fails.
+    """
+    conn = sqlite3.connect(db_path)
+    try:
+        busy, _, _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        if busy:
+            raise SystemExit(f"{db_path.name} is in use by another process (checkpoint blocked) -- close it and rerun.")
+        mode = conn.execute("PRAGMA journal_mode=DELETE").fetchone()[0]
+        if mode != "delete":
+            raise SystemExit(f"Could not switch {db_path.name} to DELETE journal mode (still '{mode}') -- is it open elsewhere?")
+        print(f"Running quick_check on {db_path.name} (a few minutes at full size)...")
+        result = conn.execute("PRAGMA quick_check").fetchone()[0]
+        if result != "ok":
+            raise SystemExit(f"quick_check failed on {db_path.name}: {result}")
+    except sqlite3.OperationalError as e:
+        raise SystemExit(f"Could not prepare {db_path.name} for upload: {e}")
+    finally:
+        conn.close()
+
+    for suffix in ("-wal", "-shm"):
+        sidecar = db_path.with_name(db_path.name + suffix)
+        if sidecar.exists():
+            raise SystemExit(f"{sidecar.name} still present after switching to DELETE mode -- is the db open elsewhere?")
+    print(f"  {db_path.name} checkpointed, DELETE journal mode, quick_check ok")
+
+
 def main():
     if not HF_ENV_FILE.exists():
         raise SystemExit(f"No hf.env found at {HF_ENV_FILE}. Create it with HF_TOKEN=... first.")
     token = load_env(HF_ENV_FILE)["HF_TOKEN"]
+
+    # Before anything touches the network, so a failed check uploads nothing.
+    db_path = DATA_DIR / "nih_harvester.db"
+    if db_path.exists():
+        prepare_db_for_upload(db_path)
 
     api = HfApi(token=token)
 
@@ -179,7 +226,6 @@ def main():
     card_path.unlink()
     print("Uploaded dataset card (README.md)")
 
-    db_path = DATA_DIR / "nih_harvester.db"
     if db_path.exists():
         print(f"Uploading {db_path.name} ({db_path.stat().st_size / 1e9:.2f} GB)...")
         api.upload_file(

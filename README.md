@@ -85,6 +85,8 @@ is_current         INTEGER NOT NULL DEFAULT 1
 
 Harvesting from scratch takes hours and pulls several GB of JSON. A pre-built copy of this dataset is published on Hugging Face: *([retrogradespace/nih-reporter-harvest](https://huggingface.co/datasets/retrogradespace/nih-reporter-harvest))*.
 
+The pipeline writes `nih_harvester.db` in WAL journal mode, but `src/3_upload_to_huggingface.py` checkpoints it and switches it to rollback-journal (DELETE) mode before uploading, so the published file is a single self-contained database that opens read-only in any SQLite build. If you open a local WAL copy with `sqlite3 -readonly` and get `unable to open database file (14)`, that's Apple's `/usr/bin/sqlite3` refusing to open a WAL database read-only once its `-wal` file is gone. Open it without `-readonly`, use Python's `sqlite3` module or a newer `sqlite3` (e.g. Homebrew's), or run `sqlite3 data/nih_harvester.db "PRAGMA journal_mode=DELETE"` once.
+
 NIH RePORTER data is a U.S. government work and in the public domain. See [NIH RePORTER&#39;s terms](https://reporter.nih.gov/) for the authoritative statement; this project adds no additional restrictions on top of that for the harvested data itself. The code in this repository is MIT-licensed (see `LICENSE`).
 
 ## Requirements
