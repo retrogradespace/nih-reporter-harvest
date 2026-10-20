@@ -11,7 +11,7 @@ If 4_ fails partway, rerun the same pull with
     ../.venv/bin/python3 4_weekly_refresh_pull.py --run-id <run_id>
 (it resumes from the last finished year), then 5_ with that --run-id.
 
-Scheduled by schedule_weekly.py (Mondays 21:00; NIH updates RePORTER on
+Scheduled by schedule_weekly.py (Mondays 15:00; NIH updates RePORTER on
 Saturdays).
 
 Usage:
@@ -40,7 +40,7 @@ def keep_awake():
 
 
 def remaining_wakes():
-    """macOS: how many one-off 'Monday 20:55' wakes are still scheduled
+    """macOS: how many one-off 'Monday 14:55' wakes are still scheduled
     (README: "Waking the Mac for the run"). None elsewhere or on error."""
     if sys.platform != "darwin":
         return None
@@ -48,7 +48,7 @@ def remaining_wakes():
         out = subprocess.run(["/usr/bin/pmset", "-g", "sched"], capture_output=True, text=True).stdout
     except OSError:
         return None
-    return sum(1 for line in out.splitlines() if "wake at" in line and "20:55:00" in line)
+    return sum(1 for line in out.splitlines() if "wake at" in line and "14:55:00" in line)
 
 
 def main():
@@ -93,7 +93,7 @@ def main():
 
         wakes = remaining_wakes()
         if wakes is not None and wakes < 4:
-            say(f"!! WARNING: only {wakes} scheduled Monday 20:55 wake(s) left -- "
+            say(f"!! WARNING: only {wakes} scheduled Monday 14:55 wake(s) left -- "
                 f"schedule more (README: \"Waking the Mac for the run\"). Run status unchanged.")
 
         status = "SUCCESS" if ok else "FAILED"

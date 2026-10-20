@@ -44,7 +44,7 @@ Four for four is enough to call this a general rule for this API, not a per-fiel
 | 2     | `src/2_load_to_sqlite.py` | Initial build: loads every `fy*.jsonl` into `data/nih_harvester.db` (table `nih_raw_projects`). Insert-only: an `appl_id` already in the table is never touched, so it can't overwrite newer versions from the weekly refresh with the older harvest files. |
 | 4     | `src/4_weekly_refresh_pull.py` | Weekly re-pull of every fiscal year (FY1985 through next FY), about three hours. Each year must come back with exactly NIH's total, bucket by bucket, or the pull fails and nothing is loaded. Writes a temporary snapshot to `data/weekly/<run_id>/` and, only when every year is complete, `data/weekly/<run_id>.manifest.json` (NIH's total for every query, each year's count and sha256). A failed pull resumes with the same `--run-id`. |
 | 5     | `src/5_load_weekly_refresh.py` | Loads that pull. New records are inserted; a changed record's current version is closed out and the new one inserted; a record NIH no longer returns is closed out (never deleted). Every difference goes to `nih_change_log`. Stops without committing if more than `--max-removals` (default 100) would be removed. Then writes the week's changes to `data/weekly/delta_<run_id>.jsonl.gz` and deletes the full snapshot. |
-| 6     | `src/6_run_weekly_refresh.py` | The scheduled job: 4 then 5 with one run id, logged to `logs/weekly_refresh_<date>.log`. `src/schedule_weekly.py` installs it (macOS launchd, Mondays 21:00; prints a crontab line elsewhere). |
+| 6     | `src/6_run_weekly_refresh.py` | The scheduled job: 4 then 5 with one run id, logged to `logs/weekly_refresh_<date>.log`. `src/schedule_weekly.py` installs it (macOS launchd, Mondays 15:00; prints a crontab line elsewhere). |
 
 `src/migrate_to_versions.py` converted a pre-versioning database (one row per `appl_id`) to this layout on 2026-10-18. It refuses to run on a database that's already versioned.
 
@@ -56,7 +56,7 @@ cd src
 ../.venv/bin/python3 1c_close_residual_gaps.py # closes what 1b couldn't reach; checks every year
 ../.venv/bin/python3 2_load_to_sqlite.py
 ../.venv/bin/python3 6_run_weekly_refresh.py   # then weekly: brings every record up to date, keeps every version
-../.venv/bin/python3 schedule_weekly.py        # optional: run 6_ every Monday at 21:00
+../.venv/bin/python3 schedule_weekly.py        # optional: run 6_ every Monday at 15:00
 ```
 
 Then create the two derived views (either via the `sqlite3` CLI or Python's `sqlite3` module):
@@ -68,10 +68,10 @@ sqlite3 data/nih_harvester.db < ddl/nih_indicators_view.sql
 
 ### Waking the Mac for the run
 
-macOS keeps only one *repeating* wake per machine (`pmset repeat`), and on the machine this was built on it is already used by another weekly job. So the Monday 21:00 run is covered by one-off wakes instead, a year at a time. Run this once in Terminal (it asks for your password once):
+macOS keeps only one *repeating* wake per machine (`pmset repeat`), and on the machine this was built on it is already used by another weekly job. So the Monday 15:00 run is covered by one-off wakes instead, a year at a time. Run this once in Terminal (it asks for your password once):
 
 ```bash
-for i in $(seq 0 51); do sudo pmset schedule wake "$(date -v+mon -v+${i}w '+%m/%d/%y') 20:55:00"; done
+for i in $(seq 0 51); do sudo pmset schedule wake "$(date -v+mon -v+${i}w '+%m/%d/%y') 14:55:00"; done
 pmset -g sched    # lists them
 ```
 

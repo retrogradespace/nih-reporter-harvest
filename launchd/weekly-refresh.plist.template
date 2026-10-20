@@ -17,16 +17,16 @@
     <key>WorkingDirectory</key>
     <string>__REPO__/src</string>
 
-    <!-- Mondays (Weekday 1) at 21:00 local time. NIH updates RePORTER on
+    <!-- Mondays (Weekday 1) at 15:00 local time. NIH updates RePORTER on
          Saturdays. No wake is scheduled (macOS allows one repeating wake per
-         machine); if the Mac is asleep at 21:00, launchd runs the job when it
+         machine); if the Mac is asleep at 15:00, launchd runs the job when it
          next wakes. If it's shut down, that week is skipped. -->
     <key>StartCalendarInterval</key>
     <dict>
         <key>Weekday</key>
         <integer>1</integer>
         <key>Hour</key>
-        <integer>21</integer>
+        <integer>15</integer>
         <key>Minute</key>
         <integer>0</integer>
     </dict>

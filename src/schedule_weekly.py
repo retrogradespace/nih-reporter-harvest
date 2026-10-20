@@ -1,5 +1,5 @@
 """
-Installs the weekly refresh (6_run_weekly_refresh.py, Mondays 21:00 local
+Installs the weekly refresh (6_run_weekly_refresh.py, Mondays 15:00 local
 time) for the user running it.
 
     macOS   a launchd LaunchAgent from launchd/weekly-refresh.plist.template.
@@ -52,7 +52,7 @@ def mac(args):
     result = run("launchctl", "bootstrap", domain, str(target))
     if result.returncode != 0:
         raise SystemExit(f"launchctl bootstrap failed: {result.stderr.strip()}")
-    print(f"Installed {LABEL}: Mondays 21:00, running {RUNNER}")
+    print(f"Installed {LABEL}: Mondays 15:00, running {RUNNER}")
 
 
 def main():
@@ -66,7 +66,7 @@ def main():
         mac(args)
     else:
         print("Add this line with `crontab -e`:")
-        print(f"0 21 * * 1 {REPO}/.venv/bin/python3 {RUNNER}")
+        print(f"0 15 * * 1 {REPO}/.venv/bin/python3 {RUNNER}")
 
 
 if __name__ == "__main__":
