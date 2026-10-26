@@ -1,15 +1,16 @@
 """
 nih-reporter-harvest, stage 6 -- the scheduled weekly job. Runs the full
 re-pull (4_) and then the load (5_) with the same run id, so 5_ loads
-exactly the pull 4_ just made. 5_ runs only if 4_ succeeded.
+exactly the pull 4_ just made, then rebuilds the child tables (7_). Each
+step runs only if the one before it succeeded.
 
-Output from both goes to logs/weekly_refresh_<date>.log, ending in SUCCESS
+Output from all three goes to logs/weekly_refresh_<date>.log, ending in SUCCESS
 or FAILED. On macOS a `caffeinate -i` assertion is held for the whole run
 (about three hours) so the Mac can't idle-sleep partway through.
 
 If 4_ fails partway, rerun the same pull with
     ../.venv/bin/python3 4_weekly_refresh_pull.py --run-id <run_id>
-(it resumes from the last finished year), then 5_ with that --run-id.
+(it resumes from the last finished year), then 5_ with that --run-id, then 7_.
 
 Scheduled by schedule_weekly.py (Mondays 15:00; NIH updates RePORTER on
 Saturdays).
@@ -66,7 +67,8 @@ def main():
     if args.max_removals is not None:
         load_args += ["--max-removals", str(args.max_removals)]
     steps = [("4_weekly_refresh_pull.py", ["--run-id", run_id]),
-             ("5_load_weekly_refresh.py", load_args)]
+             ("5_load_weekly_refresh.py", load_args),
+             ("7_build_child_tables.py", [])]
 
     ok = True
     with log_path.open("a") as log:
