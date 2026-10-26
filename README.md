@@ -45,7 +45,7 @@ Four for four is enough to call this a general rule for this API, not a per-fiel
 | 4     | `src/4_weekly_refresh_pull.py` | Weekly re-pull of every fiscal year (FY1985 through next FY), about three hours. Each year must come back with exactly NIH's total, bucket by bucket, or the pull fails and nothing is loaded. Writes a temporary snapshot to `data/weekly/<run_id>/` and, only when every year is complete, `data/weekly/<run_id>.manifest.json` (NIH's total for every query, each year's count and sha256). A failed pull resumes with the same `--run-id`. |
 | 5     | `src/5_load_weekly_refresh.py` | Loads that pull. New records are inserted; a changed record's current version is closed out and the new one inserted; a record NIH no longer returns is closed out (never deleted). Every difference goes to `nih_change_log`. Stops without committing if more than `--max-removals` (default 100) would be removed. Then writes the week's changes to `data/weekly/delta_<run_id>.jsonl.gz` and deletes the full snapshot. |
 | 6     | `src/6_run_weekly_refresh.py` | The scheduled job: 4 then 5 with one run id, then 7, logged to `logs/weekly_refresh_<date>.log`. `src/schedule_weekly.py` installs it (macOS launchd, Mondays 15:00; prints a crontab line elsewhere). |
-| 7     | `src/7_build_child_tables.py` | Rebuilds the five child tables (`ddl/nih_child_tables.sql`) from the current records in one transaction, then runs `ddl/nih_spending_categories_check.sql` and logs any rows it returns as a WARNING. A few minutes; about 5 GB of tables. |
+| 7     | `src/7_build_child_tables.py` | Rebuilds the five child tables (`ddl/nih_child_tables.sql`) from the current records in one transaction, then runs `ddl/nih_spending_categories_check.sql` and logs any rows it returns as a WARNING. About 25 minutes at ~3M records; about 5 GB of tables. |
 
 `src/migrate_to_versions.py` converted a pre-versioning database (one row per `appl_id`) to this layout on 2026-10-18. It refuses to run on a database that's already versioned.
 
@@ -136,6 +136,8 @@ Stage 1c ran across every fiscal year on 2026-10-18 and added 741 records. Every
 
 30 records in the harvest files are no longer reported by NIH (FY2024: 1, FY2025: 14, FY2026: 15). Two of them are records NIH moved to a later fiscal year (type 7 awards, appl_ids 11337819 and 11398315); the database already holds their later-year version. The first weekly refresh closes out the rest as `REMOVED`.
 
-Versioning and the weekly refresh were added on 2026-10-18. Publishing the weekly updates to Hugging Face, and the layout of the published data, are next.
+Versioning and the weekly refresh were added on 2026-10-18; the first weekly refresh (run `2026-10-20T010108Z`) closed out 33 records as `REMOVED` (FY2024: 1, FY2025: 13, FY2026: 19), added 129 and updated 82,468, leaving 2,983,437 current records. The five child tables were added on 2026-10-20.
+
+Hugging Face now has the database as of that run, with the child tables, `nih_change_log` and `nih_refresh_runs`, plus the original `raw/` harvest files (which don't include weekly changes). The published copy is updated by hand with `src/3_upload_to_huggingface.py`, not by the weekly job, so it lags the local database by however many runs have happened since; its dataset card names the run it's current through. Publishing each week's changes automatically is next.
 
 # Happy Hacking Folk

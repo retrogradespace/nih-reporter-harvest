@@ -6,7 +6,7 @@ nih_raw_projects_current, then runs ddl/nih_spending_categories_check.sql.
 
 6_run_weekly_refresh.py runs this after every successful load (5_), so the
 tables are never older than the last load. The rebuild is one transaction:
-if it fails, the previous tables are left exactly as they were. A few
+if it fails, the previous tables are left exactly as they were. About 25
 minutes at ~3M records; the tables take about 5 GB on top of the raw data,
 and the WAL briefly needs about as much again while the rebuild runs.
 

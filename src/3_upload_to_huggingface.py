@@ -66,29 +66,45 @@ size_categories:
 # NIH RePORTER Harvest
 
 A complete, nationwide pull of NIH RePORTER project records, fiscal years
-1985-present, with no institution scoping applied. 2,983,343 records
-across 42 fiscal years, harvested to nationwide completeness (see
-Coverage below) rather than filtered to any subset of institutions,
-agencies, or award types.
+1985-present, with no institution scoping applied. 2,983,437 current
+records across 43 fiscal years (FY1985-FY2027), harvested to nationwide
+completeness (see Coverage below) rather than filtered to any subset of
+institutions, agencies, or award types.
+
+**As of:** data current through NIH's update loaded by weekly refresh run
+`2026-10-20T010108Z` (see `nih_refresh_runs`).
 
 See the harvesting code and full writeup at
 https://github.com/retrogradespace/nih-reporter-harvest schema-on-read design,
 the adaptive pagination strategy that gets full coverage despite NIH's
-10,000-record pagination cap at nationwide volumes, and the two derived
-analytical views described below.
+10,000-record pagination cap at nationwide volumes, and the derived
+views and child tables described below.
 
 ## Files
 
-- `nih_harvester.db` a SQLite database (~22 GB). Table `nih_raw_projects`
-  holds one row per record with the full raw API response verbatim in
-  `raw_json` (schema-on-read: nothing is dropped, typed, or restricted at
-  load time). Two derived views are included:
+- `nih_harvester.db` a SQLite database (~30 GB). Table `nih_raw_projects`
+  holds every version of every record with the full raw API response
+  verbatim in `raw_json` (schema-on-read: nothing is dropped, typed, or
+  restricted at load time). Two derived views are included:
   - `nih_parsed` flattens `raw_json` into ~50 individual columns
     (organization, dates, funding amounts, PI/investigator info, etc.) via
     SQLite's `json_extract()`.
   - `nih_indicators` layers a worked analytical example on `nih_parsed`:
     multi-year-funding (MYF) classification, budget/project duration in
     days, and a fiscal-year field keyed off `award_notice_date`.
+
+  Five child tables explode the array fields `nih_parsed` keeps as JSON
+  text into one row per element: `nih_principal_investigators`,
+  `nih_program_officers`, `nih_agency_ic_fundings`,
+  `nih_spending_categories` and `nih_covid_response`. Each row carries the
+  project's identifying columns (appl_id, project_num, fiscal_year, title,
+  contact PI, activity code, administering IC, organization), so one table
+  works on its own as a Tableau or pandas source. Identifiers are text;
+  the only numbers are `nih_agency_ic_fundings`' per-institute
+  `ic_*_cost` dollars. Project-level dollars are left out on purpose (they
+  would be double-counted by a SUM): use `nih_parsed` for totals. They are
+  rebuilt after every weekly load; `ddl/nih_child_tables.sql` in the
+  GitHub repo documents every column and rule.
 
   The file is a single self-contained database in rollback-journal
   (DELETE) mode, not WAL, so it opens with any SQLite reader, including
@@ -100,7 +116,9 @@ analytical views described below.
   how many records it produced, plus `fy<year>.gapfill_manifest.json`
   (stage 1b) and `fy<year>.gapfill_1c_manifest.json` (stage 1c) for the
   records the gap-fill passes appended. The 1c manifest lists NIH's own
-  total for every query it made and the jsonl file's sha256.
+  total for every query it made and the jsonl file's sha256. These are the
+  initial harvest (2026-10-18): weekly refresh changes are in the
+  database, not in `raw/`.
 
 ## Schema (`nih_raw_projects`)
 
@@ -122,8 +140,15 @@ is_current         INTEGER NOT NULL      -- 1 = latest known version
 ```
 
 `nih_change_log` records every new, changed (per top-level field) and
-removed record found by each weekly refresh; `nih_refresh_runs` has one
-row per refresh. History starts at the first weekly refresh (October 2026).
+removed record found by each weekly refresh. History starts at the first
+weekly refresh (October 2026).
+
+`nih_refresh_runs` has one row per weekly load, even one with no changes:
+`run_id` (UTC, sorts in run order), `loaded_at`, `records_pulled`,
+`new_count`, `changed_count`, `removed_count`, and `delta_file` /
+`delta_sha256` naming that week's change file (kept locally by the
+pipeline, not published here). Its latest `run_id` is the "as of" for
+this database.
 
 ## Coverage and known limitations
 
@@ -141,15 +166,15 @@ row per refresh. History starts at the first weekly refresh (October 2026).
   subproject flag, and fetched every bucket that was short. After 1c,
   **every fiscal year holds every record NIH reports for it.** Each
   bucket 1c fetched had to return NIH's full count.
-- 30 records on file are no longer reported by NIH (FY2024: 1,
-  FY2025: 14, FY2026: 15). The weekly refresh closes such records out
-  (`is_current = 0`, logged as `REMOVED`) rather than deleting them.
-- FY2026 (and possibly the tail of the most recent closed fiscal year) is
-  a snapshot as of harvest time, not a closed-out year the federal fiscal
-  year runs Oct 1-Sep 30, so the current year's totals will keep growing
-  in NIH's own system after this snapshot was taken. Check the relevant
-  `fy<year>.manifest.json`'s `finished_at` for exactly when each year was
-  pulled.
+- A record NIH stops reporting is closed out (`is_current = 0`, logged
+  as `REMOVED`) rather than deleted. Run `2026-10-20T010108Z` closed out
+  33 (FY2024: 1, FY2025: 13, FY2026: 19).
+- FY2026, FY2027 (and possibly the tail of the most recent closed fiscal
+  year) are a snapshot as of the latest refresh, not closed-out years the
+  federal fiscal year runs Oct 1-Sep 30, so the current year's totals
+  will keep growing in NIH's own system. `raw/`'s
+  `fy<year>.manifest.json` `finished_at` says when each year was first
+  pulled; `nih_refresh_runs` says when it was last refreshed.
 - **Worth knowing about the MYF classification specifically:** it's
   narrower than "does this project span multiple years." It requires the
   *budget* period to exactly match the *project* period, which most
