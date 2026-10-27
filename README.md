@@ -136,8 +136,8 @@ Stage 1c ran across every fiscal year on 2026-10-18 and added 741 records. Every
 
 30 records in the harvest files are no longer reported by NIH (FY2024: 1, FY2025: 14, FY2026: 15). Two of them are records NIH moved to a later fiscal year (type 7 awards, appl_ids 11337819 and 11398315); the database already holds their later-year version. The first weekly refresh closes out the rest as `REMOVED`.
 
-Versioning and the weekly refresh were added on 2026-10-18; the first weekly refresh (run `2026-10-20T010108Z`) closed out 33 records as `REMOVED` (FY2024: 1, FY2025: 13, FY2026: 19), added 129 and updated 82,468, leaving 2,983,437 current records. The five child tables were added on 2026-10-20.
+Versioning and the weekly refresh were added on 2026-10-18; the first weekly refresh (run `2026-10-20T010108Z`) closed out 33 records as `REMOVED` (FY2024: 1, FY2025: 13, FY2026: 19), added 129 and updated 82,468, leaving 2,983,437 current records. The five child tables were added on 2026-10-20. The second (run `2026-10-26T190005Z`) added 283, updated 3,552 and closed out 7 (all FY2026), leaving 2,983,713.
 
-Hugging Face now has the database as of that run, with the child tables, `nih_change_log` and `nih_refresh_runs`, plus the original `raw/` harvest files (which don't include weekly changes). The published copy is updated by hand with `src/3_upload_to_huggingface.py`, not by the weekly job, so it lags the local database by however many runs have happened since; its dataset card names the run it's current through. Publishing each week's changes automatically is next.
+Hugging Face now has the database as of the second run, with the child tables, `nih_change_log` and `nih_refresh_runs`, plus the original `raw/` harvest files (which don't include weekly changes). The published copy is updated by hand with `src/3_upload_to_huggingface.py`, not by the weekly job, so it lags the local database by however many runs have happened since; its dataset card names the run it's current through. Publishing each week's changes automatically is next.
 
 # Happy Hacking Folk

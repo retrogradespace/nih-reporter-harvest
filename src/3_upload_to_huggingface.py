@@ -66,13 +66,26 @@ size_categories:
 # NIH RePORTER Harvest
 
 A complete, nationwide pull of NIH RePORTER project records, fiscal years
-1985-present, with no institution scoping applied. 2,983,437 current
+1985-present, with no institution scoping applied. 2,983,713 current
 records across 43 fiscal years (FY1985-FY2027), harvested to nationwide
 completeness (see Coverage below) rather than filtered to any subset of
 institutions, agencies, or award types.
 
 **As of:** data current through NIH's update loaded by weekly refresh run
-`2026-10-20T010108Z` (see `nih_refresh_runs`).
+`2026-10-26T190005Z` (see `nih_refresh_runs`).
+
+## History
+
+| Load | Date | New | Changed | Removed | Current records |
+|------|------|----:|--------:|--------:|----------------:|
+| Initial harvest (stages 1, 1b, 1c) | 2026-10-18 | 2,983,341 | | | 2,983,341 |
+| Weekly refresh `2026-10-20T010108Z` | 2026-10-20 | 129 | 82,468 | 33 | 2,983,437 |
+| Weekly refresh `2026-10-26T190005Z` | 2026-10-26 | 283 | 3,552 | 7 | 2,983,713 |
+
+Changed means a new version of an existing record; the old version is
+kept (`is_current = 0`). The first refresh's large change count is the
+first comparison against the harvest, which was loaded between
+2026-08-18 and 2026-10-18. The five child tables were added on 2026-10-20.
 
 See the harvesting code and full writeup at
 https://github.com/retrogradespace/nih-reporter-harvest schema-on-read design,
@@ -168,7 +181,8 @@ this database.
   bucket 1c fetched had to return NIH's full count.
 - A record NIH stops reporting is closed out (`is_current = 0`, logged
   as `REMOVED`) rather than deleted. Run `2026-10-20T010108Z` closed out
-  33 (FY2024: 1, FY2025: 13, FY2026: 19).
+  33 (FY2024: 1, FY2025: 13, FY2026: 19); run `2026-10-26T190005Z`
+  closed out 7 (all FY2026).
 - FY2026, FY2027 (and possibly the tail of the most recent closed fiscal
   year) are a snapshot as of the latest refresh, not closed-out years the
   federal fiscal year runs Oct 1-Sep 30, so the current year's totals
