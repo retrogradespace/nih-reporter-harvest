@@ -4,3 +4,4 @@ charset-normalizer==3.4.9
 idna==3.18
 urllib3==2.7.0
 huggingface_hub==1.26.0
+PyYAML==6.0.3

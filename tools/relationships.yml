@@ -1,0 +1,72 @@
+# Joins and keys for docs/data_model.md (tools/make_data_model.py).
+#
+# The database declares no foreign keys, so the joins live here.
+# make_data_model.py exits 2 if anything below names an object or column the
+# catalog doesn't have, and checks every key and relationship against the
+# data each time it runs.
+#
+# keys: each object's grain, the columns that identify one row: a list, or
+#   {columns: [...], note: ...} when the data doesn't hold to it cleanly.
+# relationships: one entry per join.
+#   from / to     object.column, or object.(col1, col2) for a composite join
+#   cardinality   from:to -- N:1, 1:1, 1:N or N:N. The "1" side is checked
+#                 for duplicates.
+#   meaning       one line, shown in the model
+#   where         optional SQL condition on the from side (unqualified columns)
+#   note          optional: why a relationship that doesn't hold cleanly is
+#                 still right, shown with its counts
+
+keys:
+  nih_raw_projects: [version_id]
+  nih_raw_projects_current: [appl_id]
+  nih_parsed: [appl_id]
+  nih_indicators: [appl_id]
+  nih_principal_investigators: [appl_id, pi_seq]
+  nih_program_officers: [appl_id, po_seq]
+  nih_agency_ic_fundings: [appl_id, funding_seq]
+  nih_spending_categories: [appl_id, category_seq]
+  nih_covid_response: [appl_id, covid_seq]
+  nih_change_log: [change_id]
+  nih_refresh_runs: [run_id]
+
+relationships:
+  - from: nih_raw_projects_current.appl_id
+    to: nih_raw_projects.appl_id
+    cardinality: "1:N"
+    meaning: The current version of a record, among all its versions (is_current = 1).
+  - from: nih_parsed.appl_id
+    to: nih_raw_projects_current.appl_id
+    cardinality: "1:1"
+    meaning: raw_json unpacked into columns.
+  - from: nih_indicators.appl_id
+    to: nih_parsed.appl_id
+    cardinality: "1:1"
+    meaning: nih_parsed plus the multi-year-funding columns.
+  - from: nih_principal_investigators.appl_id
+    to: nih_parsed.appl_id
+    cardinality: "N:1"
+    meaning: One row per PI listed on the record. appl_id is text here, an integer in nih_parsed.
+  - from: nih_program_officers.appl_id
+    to: nih_parsed.appl_id
+    cardinality: "N:1"
+    meaning: One row per program officer on the record.
+  - from: nih_agency_ic_fundings.appl_id
+    to: nih_parsed.appl_id
+    cardinality: "N:1"
+    meaning: One row per funding institute on the record.
+  - from: nih_spending_categories.appl_id
+    to: nih_parsed.appl_id
+    cardinality: "N:1"
+    meaning: One row per spending category on the record.
+  - from: nih_covid_response.appl_id
+    to: nih_parsed.appl_id
+    cardinality: "N:1"
+    meaning: One row per COVID response code on the record.
+  - from: nih_change_log.appl_id
+    to: nih_raw_projects.appl_id
+    cardinality: "N:N"
+    meaning: Changes detected to a record. Join all versions, not the current view, so REMOVED rows match.
+  - from: nih_change_log.run_id
+    to: nih_refresh_runs.run_id
+    cardinality: "N:1"
+    meaning: The weekly load that detected the change.
