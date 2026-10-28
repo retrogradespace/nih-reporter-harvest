@@ -118,6 +118,18 @@ SELECT detected_at, appl_id, project_num, field_name, old_value, new_value
 
 Five child tables (`ddl/nih_child_tables.sql`, rebuilt by `src/7_build_child_tables.py`) explode the array fields `nih_parsed` keeps as JSON text into one row per element: `nih_principal_investigators`, `nih_program_officers`, `nih_agency_ic_fundings`, `nih_spending_categories` and `nih_covid_response`. Each row carries the project's identifying columns (`appl_id`, `project_num`, `fiscal_year`, title, contact PI, activity code, administering IC, organization name / IPF code / state, start and end dates), so one table works on its own as a Tableau or pandas source. They're tables rather than views because unpacking ~3M records' arrays at query time is slow. Identifiers and labels (`appl_id`, `fiscal_year`, `organization_org_ipf_code`, every `*_seq`, `pi_profile_id`, `funding_fy`, `spending_category_id`) are text, booleans are `'true'`/`'false'`, and the only numbers are the per-institute `ic_*_cost` dollars. Project-level dollars are left out on purpose: they would repeat on every element row and be double-counted by a SUM. The SQL file's header covers the details, including how spending category names are paired with their ids.
 
+## Data model
+
+[`docs/data_model.md`](docs/data_model.md) has every table and view above as an ER diagram of the key and join columns, and a data dictionary of every column. It's generated from the database's own catalog, so don't edit it by hand. The database declares no foreign keys: the joins are listed in `tools/relationships.yml`, and each run checks every one against the data (orphans, and duplicates on the side that should be unique) and documents any that doesn't hold cleanly, with its counts.
+
+Regenerate after any change to a table, a view or `relationships.yml`, while the weekly job isn't running (about 3 minutes; it opens the database read-only):
+
+```bash
+.venv/bin/python3 tools/make_data_model.py
+```
+
+It exits 2 without writing anything if `relationships.yml` names an object or column the database doesn't have.
+
 ## Data
 
 Harvesting from scratch takes hours and pulls several GB of JSON. A pre-built copy of this dataset is published on Hugging Face: *([retrogradespace/nih-reporter-harvest](https://huggingface.co/datasets/retrogradespace/nih-reporter-harvest))*.
@@ -128,7 +140,7 @@ NIH RePORTER data is a U.S. government work and in the public domain. See [NIH R
 
 ## Requirements
 
-Python 3.9+, `requests` (see `requirements.txt`). SQLite support is via Python's standard library  no separate database install needed.
+Python 3.9+, `requests`, and `PyYAML` for `tools/make_data_model.py` (see `requirements.txt`). SQLite support is via Python's standard library  no separate database install needed.
 
 ## Future Releases
 
