@@ -42,15 +42,16 @@ Four for four is enough to call this a general rule for this API, not a per-fiel
 | 1b    | `src/1b_backfill_gaps.py` | Second pass for years where stage 1 logged a shortfall. Splits by `activity_code` instead of agency, and only appends records that aren't already in `fy<year>.jsonl`. Writes its own `fy<year>.gapfill_manifest.json` and `logs/gapfill_*.log`; stage 1's manifest and `.done` marker are left alone. |
 | 1c    | `src/1c_close_residual_gaps.py` | Checks every year bucket by bucket: counts the records on file per activity code (codes seen in any year, not just this one), then per agency x subproject flag, compares each count with NIH's total for that bucket, and fetches only the short ones. Oversized buckets split by agency, not state, so records with no U.S. state are reachable. Every fetched bucket must return NIH's full count. Appends only; writes `fy<year>.gapfill_1c_manifest.json` (NIH's total for every query, plus the file's sha256) and `logs/gapfill_1c_*.log`. |
 | 2     | `src/2_load_to_sqlite.py` | Initial build: loads every `fy*.jsonl` into `data/nih_harvester.db` (table `nih_raw_projects`). Insert-only: an `appl_id` already in the table is never touched, so it can't overwrite newer versions from the weekly refresh with the older harvest files. |
-| 4     | `src/4_weekly_refresh_pull.py` | Weekly re-pull of every fiscal year (FY1985 through next FY), about three hours. Each year must come back with exactly NIH's total, bucket by bucket, or the pull fails and nothing is loaded. Writes a temporary snapshot to `data/weekly/<run_id>/` and, only when every year is complete, `data/weekly/<run_id>.manifest.json` (NIH's total for every query, each year's count and sha256). A failed pull resumes with the same `--run-id`. |
+| 3     | `src/3_upload_to_huggingface.py` | By hand, not part of the weekly job: uploads `data/nih_harvester.db` and the `data/raw/` harvest files to the Hugging Face dataset (see "Data"). Reads `HF_TOKEN` from `~/.config/nih_harvester/hf.env`. |
+| 4     | `src/4_weekly_refresh_pull.py` | Weekly re-pull of every fiscal year (FY1985 through next FY), three to five hours (5 h 16 min on 2026-10-26). Each year must come back with exactly NIH's total, bucket by bucket, or the pull fails and nothing is loaded. Writes a temporary snapshot to `data/weekly/<run_id>/` and, only when every year is complete, `data/weekly/<run_id>.manifest.json` (NIH's total for every query, each year's count and sha256). A failed pull resumes with the same `--run-id`. |
 | 5     | `src/5_load_weekly_refresh.py` | Loads that pull. New records are inserted; a changed record's current version is closed out and the new one inserted; a record NIH no longer returns is closed out (never deleted). Every difference goes to `nih_change_log`. Stops without committing if more than `--max-removals` (default 100) would be removed. Then writes the week's changes to `data/weekly/delta_<run_id>.jsonl.gz` and deletes the full snapshot. |
 | 6     | `src/6_run_weekly_refresh.py` | The scheduled job: 4 then 5 with one run id, then 7, logged to `logs/weekly_refresh_<date>.log`. `src/schedule_weekly.py` installs it (macOS launchd, Mondays 15:00; prints a crontab line elsewhere). |
-| 7     | `src/7_build_child_tables.py` | Rebuilds the five child tables (`ddl/nih_child_tables.sql`) from the current records in one transaction, then runs `ddl/nih_spending_categories_check.sql` and logs any rows it returns as a WARNING. About 25 minutes at ~3M records; about 5 GB of tables. |
+| 7     | `src/7_build_child_tables.py` | Rebuilds the five child tables (`ddl/nih_child_tables.sql`) from the current records in one transaction, then runs `ddl/nih_spending_categories_check.sql` and logs any rows it returns as a WARNING. 25 to 40 minutes at ~3M records (39 min on 2026-10-26); about 5 GB of tables. |
 
 `src/migrate_to_versions.py` converted a pre-versioning database (one row per `appl_id`) to this layout on 2026-10-18. It refuses to run on a database that's already versioned.
 
 ```bash
-./setup.sh                              # builds .venv, installs requests
+./setup.sh                              # builds the venv in ~/.venvs, links it as .venv, installs requirements.txt
 cd src
 ../.venv/bin/python3 1_harvest_raw.py   # all years  takes hours; add start/end to test on a range
 ../.venv/bin/python3 1b_backfill_gaps.py # fills shortfalls stage 1 logged; skips years already complete
@@ -77,7 +78,7 @@ for i in $(seq 0 51); do sudo pmset schedule wake "$(date -v+mon -v+${i}w '+%m/%
 pmset -g sched    # lists them
 ```
 
-The job holds a `caffeinate` assertion while it runs, so the Mac stays awake for the whole three hours. Each run's log warns when fewer than 4 of these wakes are left. A Mac that is shut down, or restarted and not logged in, skips the run: the job is a LaunchAgent and runs only in a logged-in session.
+The job holds a `caffeinate` assertion while it runs, so the Mac stays awake for the whole run (6 h 17 min on 2026-10-26). Each run's log warns when fewer than 4 of these wakes are left. A Mac that is shut down, or restarted and not logged in, skips the run: the job is a LaunchAgent and runs only in a logged-in session.
 
 ## Schema
 
@@ -132,7 +133,7 @@ It exits 2 without writing anything if `relationships.yml` names an object or co
 
 ## Data
 
-Harvesting from scratch takes hours and pulls several GB of JSON. A pre-built copy of this dataset is published on Hugging Face: *([retrogradespace/nih-reporter-harvest](https://huggingface.co/datasets/retrogradespace/nih-reporter-harvest))*.
+Harvesting from scratch takes hours and pulls about 20 GB of JSON; the database is about 28 GB. A pre-built copy of this dataset is published on Hugging Face: *([retrogradespace/nih-reporter-harvest](https://huggingface.co/datasets/retrogradespace/nih-reporter-harvest))*.
 
 The pipeline writes `nih_harvester.db` in WAL journal mode, but `src/3_upload_to_huggingface.py` checkpoints it and switches it to rollback-journal (DELETE) mode before uploading, so the published file is a single self-contained database that opens read-only in any SQLite build. If you open a local WAL copy with `sqlite3 -readonly` and get `unable to open database file (14)`, that's Apple's `/usr/bin/sqlite3` refusing to open a WAL database read-only once its `-wal` file is gone. Open it without `-readonly`, use Python's `sqlite3` module or a newer `sqlite3` (e.g. Homebrew's), or run `sqlite3 data/nih_harvester.db "PRAGMA journal_mode=DELETE"` once.
 
@@ -140,7 +141,7 @@ NIH RePORTER data is a U.S. government work and in the public domain. See [NIH R
 
 ## Requirements
 
-Python 3.9+, `requests`, and `PyYAML` for `tools/make_data_model.py` (see `requirements.txt`). SQLite support is via Python's standard library  no separate database install needed.
+Python 3.9+, `requests`, `huggingface_hub` for `src/3_upload_to_huggingface.py`, and `PyYAML` for `tools/make_data_model.py` (see `requirements.txt`). SQLite support is via Python's standard library  no separate database install needed.
 
 ## Future Releases
 
