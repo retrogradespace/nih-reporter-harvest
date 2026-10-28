@@ -429,20 +429,30 @@
         </li>
         <li>
           <h3><code>2_load_to_sqlite.py</code></h3>
-          <p>Loads every <code>fy*.jsonl</code> into <code>nih_harvester.db</code>. Idempotent: hashes existing rows
-            first, only inserts new / updates changed / skips unchanged.</p>
+          <p>Initial build: loads every <code>fy*.jsonl</code> into <code>nih_harvester.db</code>. Insert-only: a record
+            already in the table is never touched, so the older harvest files can't overwrite newer weekly versions.</p>
         </li>
         <li>
-          <h3>Derived views</h3>
+          <h3><code>6_run_weekly_refresh.py</code></h3>
+          <p>The weekly job, Mondays: re-pulls every fiscal year (<code>4_</code>), loads it (<code>5_</code>) keeping
+            every version and logging every change, then rebuilds the five child tables (<code>7_</code>).</p>
+        </li>
+        <li>
+          <h3>Derived views and child tables</h3>
           <p><code>nih_parsed</code> flattens the raw JSON into ~50 columns; <code>nih_indicators</code> layers a worked
-            multi-year-funding classification on top.</p>
+            multi-year-funding classification on top. Five child tables give one row per PI, program officer, funding
+            institute, spending category and COVID code.</p>
         </li>
       </ol>
 
       <pre><code>./setup.sh
 cd src
 ../.venv/bin/python3 1_harvest_raw.py
+../.venv/bin/python3 1b_backfill_gaps.py
+../.venv/bin/python3 1c_close_residual_gaps.py
 ../.venv/bin/python3 2_load_to_sqlite.py
+../.venv/bin/python3 7_build_child_tables.py
+../.venv/bin/python3 6_run_weekly_refresh.py   # then weekly
 
 sqlite3 ../data/nih_harvester.db &lt; ../ddl/nih_parsed_view.sql
 sqlite3 ../data/nih_harvester.db &lt; ../ddl/nih_indicators_view.sql</code></pre>
@@ -450,16 +460,19 @@ sqlite3 ../data/nih_harvester.db &lt; ../ddl/nih_indicators_view.sql</code></pre
 
     <section>
       <h2>Schema</h2>
-      <p><code>nih_raw_projects</code> — the landing table:</p>
-      <pre><code>appl_id            INTEGER PRIMARY KEY   -- NIH's unique id per fiscal-year application record
+      <p><code>nih_raw_projects</code> — the landing table, one row per <em>version</em> of each record:</p>
+      <pre><code>version_id         INTEGER PRIMARY KEY   -- one per version
+appl_id            INTEGER NOT NULL      -- NIH's unique id per fiscal-year application record
 project_num        TEXT
 core_project_num   TEXT
 fiscal_year        INTEGER
 raw_json           TEXT NOT NULL         -- the full API record, verbatim
 row_hash           TEXT NOT NULL         -- sha256 of raw_json's canonical form
-valid_from         TEXT
-valid_to           TEXT                  -- unused for now; reserved for future use
-is_current         INTEGER NOT NULL DEFAULT 1</code></pre>
+valid_from         TEXT NOT NULL         -- when this version was first loaded
+valid_to           TEXT                  -- when it was superseded or NIH dropped it (NULL = current)
+is_current         INTEGER NOT NULL      -- 1 = latest known version</code></pre>
+      <p><code>nih_raw_projects_current</code> is a view of the current versions. <code>nih_change_log</code> records
+        every new, changed and removed record per weekly run, and <code>nih_refresh_runs</code> has one row per run.</p>
 
       <div class="callout">
         <strong>Worth knowing about the MYF classification:</strong> it's narrow and requires the <em>budget</em> period
