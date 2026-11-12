@@ -45,7 +45,7 @@ Four for four is enough to call this a general rule for this API, not a per-fiel
 | 3     | `src/3_upload_to_huggingface.py` | By hand, not part of the weekly job: uploads `data/nih_harvester.db` and the `data/raw/` harvest files to the Hugging Face dataset (see "Data"). Reads `HF_TOKEN` from `~/.config/nih_harvester/hf.env`. |
 | 4     | `src/4_weekly_refresh_pull.py` | Weekly re-pull of every fiscal year (FY1985 through next FY), three to five hours (5 h 16 min on 2026-10-26). Each year must come back with exactly NIH's total, bucket by bucket, or the pull fails and nothing is loaded. Writes a temporary snapshot to `data/weekly/<run_id>/` and, only when every year is complete, `data/weekly/<run_id>.manifest.json` (NIH's total for every query, each year's count and sha256). A failed pull resumes with the same `--run-id`. |
 | 5     | `src/5_load_weekly_refresh.py` | Loads that pull. New records are inserted; a changed record's current version is closed out and the new one inserted; a record NIH no longer returns is closed out (never deleted). Every difference goes to `nih_change_log`. Stops without committing if more than `--max-removals` (default 100) would be removed. Then writes the week's changes to `data/weekly/delta_<run_id>.jsonl.gz` and deletes the full snapshot. |
-| 6     | `src/6_run_weekly_refresh.py` | The scheduled job: 4 then 5 with one run id, then 7, logged to `logs/weekly_refresh_<date>.log`. `src/schedule_weekly.py` installs it (macOS launchd, Mondays 15:00; prints a crontab line elsewhere). |
+| 6     | `src/6_run_weekly_refresh.py` | The scheduled job: 4 then 5 with one run id, then 7, logged to `logs/weekly_refresh_<date>.log`; on success it also writes `logs/last_success.json`, which another job can watch. `src/schedule_weekly.py` installs it (macOS launchd, Mondays 15:00; prints a crontab line elsewhere). |
 | 7     | `src/7_build_child_tables.py` | Rebuilds the five child tables (`ddl/nih_child_tables.sql`) from the current records in one transaction, then runs `ddl/nih_spending_categories_check.sql` and logs any rows it returns as a WARNING. 25 to 40 minutes at ~3M records (39 min on 2026-10-26); about 5 GB of tables. |
 
 `src/migrate_to_versions.py` converted a pre-versioning database (one row per `appl_id`) to this layout on 2026-10-18. It refuses to run on a database that's already versioned.
@@ -61,6 +61,14 @@ cd src
 ../.venv/bin/python3 6_run_weekly_refresh.py   # then weekly: brings every record up to date, keeps every version
 ../.venv/bin/python3 schedule_weekly.py        # optional: run 6_ every Monday at 15:00
 ```
+
+To start the weekly run when another job finishes instead, have that job write (or replace) a file when it succeeds and pass it with `--after`:
+
+```bash
+../.venv/bin/python3 schedule_weekly.py --after ~/other-job/logs/last_success.json
+```
+
+launchd then starts 6_ whenever that file changes, and Monday 15:00 stays as the fallback for a week the other job fails or doesn't run. The job runs with `--once-a-week`: it does nothing if a run has already started since the last Saturday, so it runs once per RePORTER week whichever comes first, and a failed run isn't restarted from scratch (resume it by hand with the same `--run-id`; see the top of `src/6_run_weekly_refresh.py`). Pass `--after` again on every reinstall; without it the job is back to 15:00 only.
 
 Then create the two derived views (either via the `sqlite3` CLI or Python's `sqlite3` module):
 

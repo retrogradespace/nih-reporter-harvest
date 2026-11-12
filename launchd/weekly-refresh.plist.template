@@ -1,18 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Template. ../src/schedule_weekly.py fills in __LABEL__, __REPO__ and __HOME__
-     and writes the result to ~/Library/LaunchAgents/. Don't install it directly. -->
+     (and the --after trigger, if given) and writes the result to
+     ~/Library/LaunchAgents/. Don't install it directly. -->
 <plist version="1.0">
 <dict>
     <key>Label</key>
     <string>__LABEL__</string>
 
-    <!-- The project venv's Python, running the weekly chain (4_ then 5_). -->
+    <!-- The project venv's Python, running the weekly chain (4_, 5_, 7_). -->
     <key>ProgramArguments</key>
     <array>
         <string>__REPO__/.venv/bin/python3</string>
         <string>__REPO__/src/6_run_weekly_refresh.py</string>
-    </array>
+__ONCE_A_WEEK__    </array>
 
     <key>WorkingDirectory</key>
     <string>__REPO__/src</string>
@@ -30,7 +31,7 @@
         <key>Minute</key>
         <integer>0</integer>
     </dict>
-
+__WATCH_PATHS__
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>

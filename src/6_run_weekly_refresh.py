@@ -5,7 +5,8 @@ exactly the pull 4_ just made, then rebuilds the child tables (7_). Each
 step runs only if the one before it succeeded.
 
 Output from all three goes to logs/weekly_refresh_<date>.log, ending in SUCCESS
-or FAILED. On macOS a `caffeinate -i` assertion is held for the whole run
+or FAILED. On SUCCESS it also writes logs/last_success.json (run id and finish
+time), which another job can watch to start after this one. On macOS a `caffeinate -i` assertion is held for the whole run
 (about three hours) so the Mac can't idle-sleep partway through.
 
 If 4_ fails partway, rerun the same pull with
@@ -13,21 +14,26 @@ If 4_ fails partway, rerun the same pull with
 (it resumes from the last finished year), then 5_ with that --run-id, then 7_.
 
 Scheduled by schedule_weekly.py (Mondays 15:00; NIH updates RePORTER on
-Saturdays).
+Saturdays), optionally also started by another job's file (--after). With
+--once-a-week it does nothing if a run has already started since the last
+Saturday, so the trigger and the 15:00 fallback don't both run it, and a
+failed run isn't restarted from scratch.
 
 Usage:
-    ../.venv/bin/python3 6_run_weekly_refresh.py [--max-removals N]
+    ../.venv/bin/python3 6_run_weekly_refresh.py [--max-removals N] [--once-a-week]
 """
 
 import argparse
+import json
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
 LOG_DIR = BASE.parent / "logs"
+SUCCESS_FILE = LOG_DIR / "last_success.json"
 
 
 def keep_awake():
@@ -52,10 +58,44 @@ def remaining_wakes():
     return sum(1 for line in out.splitlines() if "wake at" in line and "14:55:00" in line)
 
 
+def started_this_week():
+    """The weekly log of a run started on or after the last Saturday (NIH's
+    update day), or None. Logs are named by local start date."""
+    today = date.today()
+    saturday = today - timedelta(days=(today.weekday() - 5) % 7)
+    for path in sorted(LOG_DIR.glob("weekly_refresh_*.log")):
+        try:
+            started = date.fromisoformat(path.stem.removeprefix("weekly_refresh_"))
+        except ValueError:
+            continue
+        if started >= saturday:
+            return path
+    return None
+
+
+def write_success(run_id):
+    """logs/last_success.json, replaced in one step so a job watching it
+    never reads half a file."""
+    tmp = SUCCESS_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"run_id": run_id,
+                               "finished_at": datetime.now().astimezone().isoformat(timespec="seconds")},
+                              indent=1) + "\n")
+    os.replace(tmp, SUCCESS_FILE)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--max-removals", type=int, help="passed through to 5_ (default there: 100)")
+    parser.add_argument("--once-a-week", action="store_true",
+                        help="do nothing if a run has already started since the last Saturday")
     args = parser.parse_args()
+
+    # Before anything is written: a skipped start must not leave a weekly log
+    # without a SUCCESS/FAILED line, which readers take to mean "running".
+    if args.once_a_week and (earlier := started_this_week()):
+        print(f"{datetime.now().astimezone().isoformat(timespec='seconds')}: "
+              f"already run this week ({earlier.name}); nothing to do.")
+        return
 
     keep_awake()
     LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -101,6 +141,10 @@ def main():
         status = "SUCCESS" if ok else "FAILED"
         say(f"\n=== weekly refresh {run_id} {status} "
             f"{datetime.now().astimezone().isoformat(timespec='seconds')} ===")
+
+    # After the SUCCESS line, so a job started by this file finds the log finished.
+    if ok:
+        write_success(run_id)
 
     sys.exit(0 if ok else 1)
 
