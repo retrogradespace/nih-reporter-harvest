@@ -14,6 +14,11 @@ nih_change_log.
    year) has been dropped by NIH. It is closed out, never deleted, and
    logged as REMOVED with the whole last-known record in old_value.
 
+   In a recent-years pull (6_'s usual week) one case reads wrong: a record
+   NIH moves from a covered year to an earlier, uncovered one isn't pulled,
+   so it is logged REMOVED, and the next full sweep finds it again as NEW.
+   The change log keeps both rows, so the move can be traced.
+
    Guard: more than --max-removals (default 100) and nothing is committed.
    A genuine NIH removal is rare and small; a large count is far more likely
    a bad pull. Check the listed appl_ids, then rerun with --run-id and a

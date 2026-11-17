@@ -1,12 +1,14 @@
 """
-nih-reporter-harvest, stage 4 -- weekly full re-pull of every fiscal year
-(FY1985 through next fiscal year), for 5_load_weekly_refresh.py to compare
-against the database.
+nih-reporter-harvest, stage 4 -- weekly re-pull of every fiscal year from
+--start (default FY1985) through next fiscal year, for
+5_load_weekly_refresh.py to compare against the database.
 
-Every year, every week: changes turn up in old years too (the University of
-Utah pipeline this was adapted from found changed records in FY2020-FY2024
-that a two-year window missed), and only a full re-pull can show that NIH
-dropped a record. About three hours of API calls.
+Whole years, never a date window: changes turn up in old years too (the
+University of Utah pipeline this was adapted from found changed records in
+FY2020-FY2024 that a two-year window missed), and only a full re-pull of a
+year can show that NIH dropped a record from it. 6_ passes --start 2020 most
+weeks and runs every year from FY1985 about every fourth week (see 6_). All
+years took 3 h 50 min to 5 h 16 min in Oct-Nov 2026.
 
 Each year comes from _complete_pull.YearPull, which either returns exactly
 NIH's total or raises. Any year that raises fails the whole pull: no
@@ -30,8 +32,8 @@ The first run builds it from data/raw/fy*.jsonl.
 
 Usage:
     ../.venv/bin/python3 4_weekly_refresh_pull.py [--run-id ID] [--start 2021 --end 2021]
---start/--end are for testing; 5_ only removes records within the years a
-pull covered.
+6_ sets --start; --end is for testing. 5_ only removes records within the
+years a pull covered.
 """
 
 import argparse
