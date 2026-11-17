@@ -15,17 +15,25 @@ If 4_ fails partway, rerun the same pull with
 
 Scheduled by schedule_weekly.py (Mondays 15:00; NIH updates RePORTER on
 Saturdays), optionally also started by another job's file (--after). With
---once-a-week it does nothing if a run has already started since the last
-Saturday, so the trigger and the 15:00 fallback don't both run it, and a
-failed run isn't restarted from scratch.
+--once-a-week it does nothing if a run has already finished (SUCCESS or
+FAILED) since the last Saturday, so the trigger and the 15:00 fallback don't
+both run it, and a failed run isn't restarted from scratch.
+
+An interrupted run is different: its log has no SUCCESS/FAILED line and no
+process holds logs/weekly_refresh.lock (a restart or shutdown killed it).
+--once-a-week resumes that run in the same log with the same run id, from
+the step it was in; 4_ skips the years it already finished. Every run holds
+the lock, so a second start while one is running does nothing.
 
 Usage:
     ../.venv/bin/python3 6_run_weekly_refresh.py [--max-removals N] [--once-a-week]
 """
 
 import argparse
+import fcntl
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import date, datetime, timedelta, timezone
@@ -34,6 +42,12 @@ from pathlib import Path
 BASE = Path(__file__).resolve().parent
 LOG_DIR = BASE.parent / "logs"
 SUCCESS_FILE = LOG_DIR / "last_success.json"
+LOCK_FILE = LOG_DIR / "weekly_refresh.lock"
+
+# "=== weekly refresh <run_id> started|resumed|SUCCESS|FAILED <time> ..." and
+# "--- <script> (<time>) ---", as written by main().
+RUN_LINE = re.compile(r"^=== weekly refresh (\S+) (started|resumed|SUCCESS|FAILED) ")
+STEP_LINE = re.compile(r"^--- (\S+\.py) \(")
 
 
 def keep_awake():
@@ -58,18 +72,50 @@ def remaining_wakes():
     return sum(1 for line in out.splitlines() if "wake at" in line and "14:55:00" in line)
 
 
+def hold_lock():
+    """An exclusive lock on logs/weekly_refresh.lock for the life of this
+    process (the OS drops it when the process dies, however it dies), or
+    None if another run holds it."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    f = LOCK_FILE.open("w")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        f.close()
+        return None
+    return f
+
+
 def started_this_week():
-    """The weekly log of a run started on or after the last Saturday (NIH's
-    update day), or None. Logs are named by local start date."""
+    """The newest weekly log of a run started on or after the last Saturday
+    (NIH's update day), or None. Logs are named by local start date."""
     today = date.today()
     saturday = today - timedelta(days=(today.weekday() - 5) % 7)
+    newest = None
     for path in sorted(LOG_DIR.glob("weekly_refresh_*.log")):
         try:
             started = date.fromisoformat(path.stem.removeprefix("weekly_refresh_"))
         except ValueError:
             continue
         if started >= saturday:
-            return path
+            newest = path
+    return newest
+
+
+def interrupted(log_path):
+    """(run_id, step script) if the log's last run never wrote SUCCESS or
+    FAILED, else None. The step is the one it was in, or None if it died
+    before starting one. Only meaningful while holding the lock."""
+    run_id = state = step = None
+    for line in log_path.read_text(errors="replace").splitlines():
+        if m := RUN_LINE.match(line):
+            run_id, state = m.groups()
+            if state == "started":
+                step = None
+        elif m := STEP_LINE.match(line):
+            step = m.group(1)
+    if state in ("started", "resumed"):
+        return run_id, step
     return None
 
 
@@ -87,21 +133,34 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--max-removals", type=int, help="passed through to 5_ (default there: 100)")
     parser.add_argument("--once-a-week", action="store_true",
-                        help="do nothing if a run has already started since the last Saturday")
+                        help="do nothing if a run has finished since the last Saturday; "
+                             "resume one that was interrupted")
     args = parser.parse_args()
 
     # Before anything is written: a skipped start must not leave a weekly log
     # without a SUCCESS/FAILED line, which readers take to mean "running".
-    if args.once_a_week and (earlier := started_this_week()):
-        print(f"{datetime.now().astimezone().isoformat(timespec='seconds')}: "
-              f"already run this week ({earlier.name}); nothing to do.")
+    now = datetime.now().astimezone().isoformat(timespec="seconds")
+    lock = hold_lock()  # held until exit
+    if lock is None:
+        print(f"{now}: a weekly refresh is already running; nothing to do.")
         return
 
+    resume = None
+    if args.once_a_week and (earlier := started_this_week()):
+        resume = interrupted(earlier)
+        if resume is None:
+            print(f"{now}: already run this week ({earlier.name}); nothing to do.")
+            return
+
     keep_awake()
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
     started = datetime.now().astimezone()
-    run_id = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
-    log_path = LOG_DIR / f"weekly_refresh_{started.date().isoformat()}.log"
+    if resume:
+        log_path = earlier
+        run_id, from_step = resume
+    else:
+        run_id = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
+        log_path = LOG_DIR / f"weekly_refresh_{started.date().isoformat()}.log"
+        from_step = None
 
     load_args = ["--run-id", run_id]
     if args.max_removals is not None:
@@ -109,6 +168,10 @@ def main():
     steps = [("4_weekly_refresh_pull.py", ["--run-id", run_id]),
              ("5_load_weekly_refresh.py", load_args),
              ("7_build_child_tables.py", [])]
+    # Steps before the interrupted one finished (each runs only if the one
+    # before it succeeded).
+    if from_step:
+        steps = steps[[s for s, _ in steps].index(from_step):]
 
     ok = True
     with log_path.open("a") as log:
@@ -117,7 +180,11 @@ def main():
             log.write(msg + "\n")
             log.flush()
 
-        say(f"=== weekly refresh {run_id} started {started.isoformat(timespec='seconds')} ===")
+        if resume:
+            say(f"\n=== weekly refresh {run_id} resumed {started.isoformat(timespec='seconds')} "
+                f"(interrupted; restarting at {steps[0][0]}) ===")
+        else:
+            say(f"=== weekly refresh {run_id} started {started.isoformat(timespec='seconds')} ===")
         for script, extra in steps:
             say(f"\n--- {script} ({datetime.now().astimezone().isoformat(timespec='seconds')}) ---")
             proc = subprocess.Popen(

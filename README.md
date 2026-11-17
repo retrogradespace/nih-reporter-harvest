@@ -68,7 +68,7 @@ To start the weekly run when another job finishes instead, have that job write (
 ../.venv/bin/python3 schedule_weekly.py --after ~/other-job/logs/last_success.json
 ```
 
-launchd then starts 6_ whenever that file changes, and Monday 15:00 stays as the fallback for a week the other job fails or doesn't run. The job runs with `--once-a-week`: it does nothing if a run has already started since the last Saturday, so it runs once per RePORTER week whichever comes first, and a failed run isn't restarted from scratch (resume it by hand with the same `--run-id`; see the top of `src/6_run_weekly_refresh.py`). Pass `--after` again on every reinstall; without it the job is back to 15:00 only.
+launchd then starts 6_ whenever that file changes, and Monday 15:00 stays as the fallback for a week the other job fails or doesn't run. The job runs with `--once-a-week`: it does nothing if a run has already finished (SUCCESS or FAILED) since the last Saturday, so it runs once per RePORTER week whichever comes first, and a failed run isn't restarted from scratch (resume it by hand with the same `--run-id`; see the top of `src/6_run_weekly_refresh.py`). A run that was interrupted (the Mac restarted or shut down, so its log has no SUCCESS/FAILED line) is resumed by the next start, usually the 15:00 fallback: same log, same run id, from the step it was in. Every run holds `logs/weekly_refresh.lock`, so a start while one is running does nothing. Pass `--after` again on every reinstall; without it the job is back to 15:00 only.
 
 Then create the two derived views (either via the `sqlite3` CLI or Python's `sqlite3` module):
 
